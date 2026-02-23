@@ -12,8 +12,9 @@ from PySide6.QtCore import Qt, QThread, Signal
 from sync_core import (sync, get_branches, SyncError, download_zipball,
                        extract_zip_to_temp, calculate_changes, local_mirror)
 
-# Fixed repository
+# Fixed repository and subdirectory
 FIXED_REPO = "IGF-Ingenieure-GmbH/Revit"
+FIXED_SUB_DIR = "Skripte"
 
 # Config file stored next to the EXE (frozen) or next to the script (dev)
 if getattr(sys, 'frozen', False):
@@ -66,7 +67,7 @@ class CheckUpdatesThread(QThread):
             zip_bytes = download_zipball(self.repo, self.branch, self.token, None)
 
             self.progress.emit(self.row, "Wird entpackt...")
-            source_root = extract_zip_to_temp(zip_bytes, None)
+            source_root = extract_zip_to_temp(zip_bytes, FIXED_SUB_DIR)
 
             try:
                 import tempfile, shutil
@@ -124,7 +125,7 @@ class SyncTaskThread(QThread):
                     self.progress.emit(self.row, self.col, pct)
                 self.status.emit(self.row, self.col, msg)
 
-            sync(self.repo, self.branch, self.local_dir, self.token, None, d_cb, s_cb)
+            sync(self.repo, self.branch, self.local_dir, self.token, FIXED_SUB_DIR, d_cb, s_cb)
             self.finished.emit(self.row, self.col)
         except Exception as e:
             self.error.emit(self.row, self.col, str(e))
