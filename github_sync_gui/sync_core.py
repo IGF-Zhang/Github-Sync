@@ -5,7 +5,11 @@ import shutil
 import tempfile
 import zipfile
 import requests
+import urllib3
 from typing import Callable, Any
+
+# Suppress SSL warnings for corporate environments with custom CA certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 API_BASE = "https://api.github.com"
 
@@ -36,7 +40,7 @@ def get_branches(repo: str, token: str | None) -> list[str]:
     url = f"{API_BASE}/repos/{repo}/branches?per_page=100"
     try:
         while url:
-            resp = requests.get(url, headers=_headers(token), timeout=30)
+            resp = requests.get(url, headers=_headers(token), timeout=30, verify=False)
             _check_response(resp, f"Branches für Repository '{repo}' konnten nicht abgerufen werden")
             branches.extend(b["name"] for b in resp.json())
             # Follow pagination via Link header
@@ -55,7 +59,7 @@ def get_latest_commit_sha(repo: str, branch: str, token: str | None) -> str:
     """Fetch the latest commit SHA for a branch."""
     url = f"{API_BASE}/repos/{repo}/commits/{branch}"
     try:
-        resp = requests.get(url, headers=_headers(token), timeout=30)
+        resp = requests.get(url, headers=_headers(token), timeout=30, verify=False)
         _check_response(resp, f"Commit-Verlauf für Repository '{repo}' konnte nicht abgerufen werden")
         return resp.json()["sha"]
     except requests.RequestException as e:
@@ -64,7 +68,7 @@ def get_latest_commit_sha(repo: str, branch: str, token: str | None) -> str:
 def download_zipball(repo: str, branch: str, token: str | None, progress_cb: Callable[[float, bool], None] | None) -> bytes:
     """Download the branch as a ZIP archive and return raw bytes."""
     url = f"{API_BASE}/repos/{repo}/zipball/{branch}"
-    resp = requests.get(url, headers=_headers(token), timeout=120, stream=True)
+    resp = requests.get(url, headers=_headers(token), timeout=120, stream=True, verify=False)
     _check_response(resp, f"Branch '{branch}' existiert nicht im Repository '{repo}'")
 
     chunks = []
