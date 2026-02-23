@@ -28,7 +28,7 @@ CONFIG_FILE = os.path.join(APP_DIR, "config.json")
 # ──────────────────────────────────────────────
 
 class FetchBranchesThread(QThread):
-    finished = Signal(int, list, str)   # row, branches, preset_branch
+    finished = Signal(int, object, str)  # row, branches (list), preset_branch
     error = Signal(int, str)            # row, error_msg
 
     def __init__(self, row, token, repo, preset_branch):
@@ -43,6 +43,7 @@ class FetchBranchesThread(QThread):
             branches = get_branches(self.repo, self.token)
             self.finished.emit(self.row, branches, self.preset_branch)
         except Exception as e:
+            print(f"[FetchBranches ERROR] repo={self.repo}: {e}")
             self.error.emit(self.row, str(e))
 
 
@@ -472,6 +473,7 @@ class MainWindow(QMainWindow):
     def _on_branches_error(self, row, error):
         if row >= self.table.rowCount():
             return
+        print(f"[Branch ERROR] row={row}: {error}")
         combo = self.table.cellWidget(row, 1)
         if combo:
             combo.clear()
