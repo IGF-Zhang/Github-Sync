@@ -270,6 +270,7 @@ class MainWindow(QMainWindow):
         token_lbl.setFixedWidth(100)
         self.token_input = QLineEdit()
         self.token_input.setEchoMode(QLineEdit.Password)
+        self.token_input.editingFinished.connect(self._on_token_changed)
         token_layout.addWidget(token_lbl)
         token_layout.addWidget(self.token_input)
         main_layout.addLayout(token_layout)
@@ -365,8 +366,16 @@ class MainWindow(QMainWindow):
         w_publish.btn.clicked.connect(lambda checked=False, w=w_publish: self._select_folder(w))
         self.table.setCellWidget(row, 4, w_publish)
 
-        # Fetch branches dynamically
-        self._fetch_branches_for_row(row, branch)
+        # Fetch branches dynamically (only if token is available)
+        token = self.token_input.text().strip()
+        if token:
+            self._fetch_branches_for_row(row, branch)
+        else:
+            combo = self.table.cellWidget(row, 1)
+            if combo:
+                combo.clear()
+                combo.addItem("Bitte Token eingeben")
+                combo.setEnabled(False)
 
     def _select_folder(self, folder_widget: FolderCellWidget):
         dir_path = QFileDialog.getExistingDirectory(self, "Ordner auswählen")
@@ -380,6 +389,21 @@ class MainWindow(QMainWindow):
         curr_row = self.table.currentRow()
         if curr_row >= 0:
             self.table.removeRow(curr_row)
+
+    # ── Token change handler ──
+
+    def _on_token_changed(self):
+        """Re-fetch branches for all rows when token is entered/changed."""
+        token = self.token_input.text().strip()
+        if not token:
+            return
+        for row in range(self.table.rowCount()):
+            combo = self.table.cellWidget(row, 1)
+            if combo:
+                current = combo.currentText()
+                # Re-fetch if loading failed or placeholder is shown
+                if current in ("Laden fehlgeschlagen", "Bitte Token eingeben", "Wird geladen...", ""):
+                    self._fetch_branches_for_row(row, "")
 
     # ── Branch fetching ──
 
