@@ -86,14 +86,22 @@ def download_zipball(repo: str, branch: str, token: str | None, progress_cb: Cal
     return b"".join(chunks)
 
 def extract_zip_to_temp(zip_bytes: bytes, sub_dir: str | None) -> str:
-    tmp_dir = tempfile.mkdtemp(prefix="github_sync_")
+    tmp_dir = tempfile.mkdtemp(prefix="gs_")
 
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         zf.extractall(tmp_dir)
 
     entries = os.listdir(tmp_dir)
     if len(entries) == 1 and os.path.isdir(os.path.join(tmp_dir, entries[0])):
-        content_root = os.path.join(tmp_dir, entries[0])
+        long_name = os.path.join(tmp_dir, entries[0])
+        # Rename the long GitHub folder name (e.g. "Owner-Repo-sha") to "r"
+        # to avoid Windows MAX_PATH (260 char) issues
+        short_name = os.path.join(tmp_dir, "r")
+        try:
+            os.rename(long_name, short_name)
+            content_root = short_name
+        except OSError:
+            content_root = long_name
     else:
         content_root = tmp_dir
 
