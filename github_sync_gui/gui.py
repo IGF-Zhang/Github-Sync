@@ -14,8 +14,11 @@ from sync_core import sync, get_branches, SyncError, download_zipball, extract_z
 # Fixed repository
 FIXED_REPO = "IGF-Ingenieure-GmbH/Revit"
 
-# Config file stored next to the script so it doesn't depend on CWD
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+# Config file stored next to the EXE (frozen) or next to the script (dev)
+if getattr(sys, 'frozen', False):
+    APP_DIR = os.path.dirname(sys.executable)
+else:
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(APP_DIR, "config.json")
 
 
