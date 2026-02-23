@@ -68,7 +68,7 @@ def get_latest_commit_sha(repo: str, branch: str, token: str | None) -> str:
 def download_zipball(repo: str, branch: str, token: str | None, progress_cb: Callable[[float, bool], None] | None) -> bytes:
     """Download the branch as a ZIP archive and return raw bytes."""
     url = f"{API_BASE}/repos/{repo}/zipball/{branch}"
-    resp = requests.get(url, headers=_headers(token), timeout=120, stream=True, verify=False)
+    resp = requests.get(url, headers=_headers(token), timeout=600, stream=True, verify=False)
     _check_response(resp, f"Branch '{branch}' existiert nicht im Repository '{repo}'")
 
     chunks = []
