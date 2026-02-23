@@ -226,3 +226,59 @@ def sync(repo: str, branch: str, local_dir: str, token: str | None,
         while os.path.dirname(tmp_root) != tmp_base and tmp_root != tmp_base:
             tmp_root = os.path.dirname(tmp_root)
         shutil.rmtree(tmp_root, ignore_errors=True)
+
+
+def local_mirror(source_dir: str, target_dir: str,
+                 progress_cb: Callable[[str, int, int, str], None] | None = None):
+    """One-way mirror from source_dir to target_dir (local-to-local).
+    
+    Makes target_dir an exact copy of source_dir.
+    """
+    if not os.path.isdir(source_dir):
+        if progress_cb:
+            progress_cb("done", 1, 1, "Quellordner existiert nicht")
+        return
+
+    os.makedirs(target_dir, exist_ok=True)
+
+    src_files = collect_files(source_dir)
+    tgt_files = collect_files(target_dir)
+
+    changes_to_make = []
+    for rel_path in src_files:
+        src = os.path.join(source_dir, rel_path.replace("/", os.sep))
+        dst = os.path.join(target_dir, rel_path.replace("/", os.sep))
+        if os.path.isfile(dst):
+            if not files_identical(src, dst):
+                changes_to_make.append(('update', src, dst, rel_path))
+        else:
+            changes_to_make.append(('create', src, dst, rel_path))
+
+    tgt_only = tgt_files - src_files
+    for rel_path in tgt_only:
+        abs_path = os.path.join(target_dir, rel_path.replace("/", os.sep))
+        changes_to_make.append(('delete', None, abs_path, rel_path))
+
+    total = len(changes_to_make)
+    if total == 0:
+        if progress_cb:
+            progress_cb("done", 1, 1, "Keine Änderungen (bereits aktuell)")
+        return
+
+    for idx, (action, src, dst, rel_path) in enumerate(changes_to_make, 1):
+        if action in ('update', 'create'):
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+        elif action == 'delete':
+            try:
+                os.remove(dst)
+            except PermissionError:
+                pass
+        if progress_cb:
+            progress_cb("syncing", idx, total,
+                        f"{'Aktualisiert' if action=='update' else 'Neu erstellt' if action=='create' else 'Gelöscht'} {rel_path}")
+
+    remove_empty_dirs(target_dir)
+
+    if progress_cb:
+        progress_cb("done", total, total, "Sicherung abgeschlossen")

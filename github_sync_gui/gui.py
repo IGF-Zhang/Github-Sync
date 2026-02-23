@@ -9,7 +9,8 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QMessageBox, QInputDialog)
 from PySide6.QtCore import Qt, QThread, Signal
 
-from sync_core import sync, get_branches, SyncError, download_zipball, extract_zip_to_temp, calculate_changes
+from sync_core import (sync, get_branches, SyncError, download_zipball,
+                       extract_zip_to_temp, calculate_changes, local_mirror)
 
 # Fixed repository
 FIXED_REPO = "IGF-Ingenieure-GmbH/Revit"
@@ -123,6 +124,40 @@ class SyncTaskThread(QThread):
                 self.status.emit(self.row, self.col, msg)
 
             sync(self.repo, self.branch, self.local_dir, self.token, None, d_cb, s_cb)
+            self.finished.emit(self.row, self.col)
+        except Exception as e:
+            self.error.emit(self.row, self.col, str(e))
+
+
+class BackupTaskThread(QThread):
+    """Thread to mirror Publish folder → Backup folder (local-to-local)."""
+    progress = Signal(int, int, int)    # row, col, value (0-100)
+    status = Signal(int, int, str)      # row, col, msg
+    finished = Signal(int, int)         # row, col
+    error = Signal(int, int, str)       # row, col, error_msg
+
+    def __init__(self, row, col, source_dir, target_dir):
+        super().__init__()
+        self.row = row
+        self.col = col  # 3 for Backup column
+        self.source_dir = source_dir
+        self.target_dir = target_dir
+
+    def run(self):
+        try:
+            if not self.source_dir or not os.path.isdir(self.source_dir):
+                self.status.emit(self.row, self.col, "Quellordner nicht vorhanden")
+                self.finished.emit(self.row, self.col)
+                return
+            os.makedirs(self.target_dir, exist_ok=True)
+
+            def cb(state, current, total, msg):
+                if total > 0:
+                    pct = int((current / total) * 100)
+                    self.progress.emit(self.row, self.col, pct)
+                self.status.emit(self.row, self.col, msg)
+
+            local_mirror(self.source_dir, self.target_dir, cb)
             self.finished.emit(self.row, self.col)
         except Exception as e:
             self.error.emit(self.row, self.col, str(e))
@@ -465,7 +500,8 @@ class MainWindow(QMainWindow):
             bk_dir = self.table.cellWidget(row, 3).folder_path if self.cb_backup.isChecked() else None
             pu_dir = self.table.cellWidget(row, 4).folder_path if self.cb_publish.isChecked() else None
 
-            dirs = [d for d in [bk_dir, pu_dir] if d]
+            # Check updates only applies to publish folder vs remote
+            dirs = [pu_dir] if pu_dir else []
             if not dirs:
                 continue
 
@@ -513,24 +549,43 @@ class MainWindow(QMainWindow):
 
             combo = self.table.cellWidget(row, 1)
             branch = combo.currentText() if combo else ""
-            if not branch or branch in ("Wird geladen...", "Laden fehlgeschlagen"):
+            if not branch or branch in ("Wird geladen...", "Laden fehlgeschlagen", "Bitte Token eingeben"):
                 continue
 
-            if self.cb_backup.isChecked():
-                bk_dir = self.table.cellWidget(row, 3).folder_path
-                if bk_dir:
-                    self._run_sync(row, 3, FIXED_REPO, branch, token, bk_dir)
-                    pending += 1
+            bk_dir = self.table.cellWidget(row, 3).folder_path
+            pu_dir = self.table.cellWidget(row, 4).folder_path
 
-            if self.cb_publish.isChecked():
-                pu_dir = self.table.cellWidget(row, 4).folder_path
-                if pu_dir:
-                    self._run_sync(row, 4, FIXED_REPO, branch, token, pu_dir)
-                    pending += 1
+            # Step 1: If Sicherung enabled, backup Publish → Sicherung
+            if self.cb_backup.isChecked() and bk_dir and pu_dir:
+                self._run_backup(row, 3, pu_dir, bk_dir)
+                pending += 1
+
+            # Step 2: If Veröffentlichung enabled, sync Remote → Publish
+            if self.cb_publish.isChecked() and pu_dir:
+                self._run_sync(row, 4, FIXED_REPO, branch, token, pu_dir)
+                pending += 1
 
         if pending == 0:
             self.btn_check.setEnabled(True)
             self.btn_start.setEnabled(True)
+
+    def _run_backup(self, row, col, source_dir, target_dir):
+        w = self.table.cellWidget(row, col)
+        if not w:
+            return
+        w.progress.setVisible(True)
+        w.progress.setValue(0)
+        w.set_status("Sicherung wird erstellt...")
+
+        th = BackupTaskThread(row, col, source_dir, target_dir)
+        th.progress.connect(self._on_sync_progress)
+        th.status.connect(self._on_sync_status)
+        th.finished.connect(self._on_sync_finished)
+        th.error.connect(self._on_sync_error)
+        self._active_threads.append(th)
+        th.finished.connect(lambda r, c, t=th: self._remove_thread_and_maybe_reenable(t))
+        th.error.connect(lambda r, c, e, t=th: self._remove_thread_and_maybe_reenable(t))
+        th.start()
 
     def _run_sync(self, row, col, repo, branch, token, local_dir):
         w = self.table.cellWidget(row, col)
