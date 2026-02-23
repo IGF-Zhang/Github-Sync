@@ -64,7 +64,14 @@ class CheckUpdatesThread(QThread):
     def run(self):
         try:
             self.progress.emit(self.row, "ZIP-Archiv wird heruntergeladen...")
-            zip_bytes = download_zipball(self.repo, self.branch, self.token, None)
+
+            def dl_cb(mb, done):
+                if done:
+                    self.progress.emit(self.row, f"Download abgeschlossen ({mb:.1f} MB)")
+                else:
+                    self.progress.emit(self.row, f"Wird heruntergeladen... {mb:.1f} MB")
+
+            zip_bytes = download_zipball(self.repo, self.branch, self.token, dl_cb)
 
             self.progress.emit(self.row, "Wird entpackt...")
             source_root = extract_zip_to_temp(zip_bytes, FIXED_SUB_DIR)
@@ -117,7 +124,10 @@ class SyncTaskThread(QThread):
                 os.makedirs(self.local_dir, exist_ok=True)
 
             def d_cb(mb, done):
-                pass
+                if done:
+                    self.status.emit(self.row, self.col, f"Download abgeschlossen ({mb:.1f} MB)")
+                else:
+                    self.status.emit(self.row, self.col, f"Wird heruntergeladen... {mb:.1f} MB")
 
             def s_cb(state, current, total, msg):
                 if total > 0:
